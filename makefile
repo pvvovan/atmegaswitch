@@ -1,10 +1,6 @@
-# CC = avr-g++
-# OBJCOPY = avr-objcopy
-# SIZE = avr-size
-GCC_PATH = /media/vovan/ssd2/pvv/github/Arduino/build/linux/work/hardware/tools/avr/bin
-CC = $(GCC_PATH)/avr-g++
-OBJCOPY = $(GCC_PATH)/avr-objcopy
-SIZE = $(GCC_PATH)/avr-size
+CC = avr-g++
+OBJCOPY = avr-objcopy
+SIZE = avr-size
 
 MCU = atmega328p
 TARGET = demo
