@@ -194,8 +194,24 @@ static void AddTask(TaskFunction_t pxTaskCode, void *const pvParameters)
 								"st     x+, __tmp_reg__                         \n\t"   \
 							);
 
+static void USART_Transmit(unsigned char data)
+{
+	/* Wait for empty transmit buffer */
+	while (!(UCSR0A & (1 << UDRE0))) { }
+	/* Put data into buffer, sends the data */
+	UDR0 = data;
+}
 
-static void slow(void* p)
+static void task_uart([[maybe_unused]] void* p)
+{
+	unsigned char data = '\0';
+	while (true) {
+		USART_Transmit(data++);
+		_delay_ms(500);
+	}
+}
+
+static void task_slow(void* p)
 {
 	for ( ; ; ) {
 		for (int i = 0; i < 5; i++) {
@@ -209,7 +225,7 @@ static void slow(void* p)
 	}
 }
 
-static void fast(void* p)
+static void task_fast(void* p)
 {
 	uint8_t mask = *((uint8_t*)p);
 
@@ -221,9 +237,9 @@ static void fast(void* p)
 
 static void start() {
 	static uint8_t led_mask = 0b00100000;
-
-	AddTask(slow, &led_mask);
-	AddTask(fast, &led_mask);
+	AddTask(task_uart, nullptr);
+	AddTask(task_slow, &led_mask);
+	AddTask(task_fast, &led_mask);
 	task_current = task_total - 1;
 
 	/* Restore the context of the first task that is going to run. */
@@ -255,10 +271,26 @@ ISR(TIMER1_COMPA_vect, ISR_NAKED)
 	__asm__ __volatile__ ( "reti" );
 }
 
+static void USART_Init(unsigned int ubrr)
+{
+	/* Set baud rate */
+	UBRR0H = (unsigned char)(ubrr >> 8);
+	UBRR0L = (unsigned char)ubrr;
+	/* Enable receiver and transmitter */
+	UCSR0B = (1 << RXEN0) | (1 << TXEN0);
+	/* Set frame format: 8data, 2stop bit */
+	UCSR0C = (1 << USBS0) | (3 << UCSZ00);
+}
+
+#define BAUD 9600
+#define MYUBRR F_CPU / 16 / BAUD - 1
+
 int main()
 {
 	PORTB |= PB5_MASK;
 	DDRB  |= PB5_MASK;
+
+	USART_Init(MYUBRR);
 
 	timer_init();
 	sei();
