@@ -85,39 +85,29 @@ StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t px
 
 static void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
 								void * const pvParameters,
-								TaskHandle_t * const pxCreatedTask,
 								TCB_t * pxNewTCB )
 {
-	StackType_t * pxTopOfStack;
+	StackType_t* pxTopOfStack;
 
-	/* Calculate the top of stack address.  This depends on whether the stack
-	* grows from high memory to low (as per the 80x86) or vice versa.
-	* portSTACK_GROWTH is used to make the result positive or negative as required
-	* by the port. */
+	/* Calculate the top of stack address. This depends on whether the stack
+	   grows from high memory to low (as per the 80x86) or vice versa.
+	   portSTACK_GROWTH is used to make the result positive or negative as required
+	   by the port. */
 	pxTopOfStack = pxNewTCB->pxStack;
 
 	/* Initialize the TCB stack to look as if the task was already running,
-	* but had been interrupted by the scheduler.  The return address is set
-	* to the start of the task function. Once the stack has been initialised
-	* the top of stack variable is updated. */
+	   but had been interrupted by the scheduler.  The return address is set
+	   to the start of the task function. Once the stack has been initialised
+	   the top of stack variable is updated. */
 	pxNewTCB->pxTopOfStack = pxPortInitialiseStack( pxTopOfStack, pxTaskCode, pvParameters );
-
-	if( pxCreatedTask != NULL )
-	{
-		/* Pass the handle out in an anonymous way.  The handle can be used to
-		* change the created task's priority, delete the created task, etc.*/
-		*pxCreatedTask = ( TaskHandle_t ) pxNewTCB;
-	}
 }
 
-void xTaskCreate2( TaskFunction_t pxTaskCode,
-							void * const pvParameters,
-							TaskHandle_t * const pxCreatedTask )
+static void xTaskCreate2(TaskFunction_t pxTaskCode, void * const pvParameters)
 {
 	TCB_t* pxNewTCB = &task_tcbs[task_n++];
 	if (task_n >= TASK_MAX) { task_n = 0; }
 
-	prvInitialiseNewTask(pxTaskCode, pvParameters, pxCreatedTask, pxNewTCB);
+	prvInitialiseNewTask(pxTaskCode, pvParameters, pxNewTCB);
 	pxCurrentTCB = pxNewTCB;
 }
 
@@ -224,7 +214,7 @@ static void slow([[maybe_unused]] void* p)
 		portRESTORE_CONTEXT();
 	}
 
-	xTaskCreate2(fast, nullptr, nullptr);
+	xTaskCreate2(fast, nullptr);
 	portRESTORE_CONTEXT();
 	__asm__ __volatile__ ( "ret" );
 }
@@ -241,14 +231,14 @@ static void fast([[maybe_unused]] void* p)
 		portRESTORE_CONTEXT();
 	}
 
-	xTaskCreate2(slow, nullptr, nullptr);
+	xTaskCreate2(slow, nullptr);
 	portRESTORE_CONTEXT();
 	__asm__ __volatile__ ( "ret" );
 }
 
 void setup() {
-	xTaskCreate2(slow, nullptr, nullptr);
-	xTaskCreate2(fast, nullptr, nullptr);
+	xTaskCreate2(slow, nullptr);
+	xTaskCreate2(fast, nullptr);
 
 	/* Restore the context of the first task that is going to run. */
 	portRESTORE_CONTEXT();
