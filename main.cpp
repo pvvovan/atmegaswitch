@@ -1,7 +1,6 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdint.h>
-#include <stddef.h>
 #include <avr/interrupt.h>
 
 static constexpr uint8_t PB5_MASK {0b0010'0000};
