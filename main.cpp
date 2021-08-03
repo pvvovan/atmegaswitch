@@ -25,7 +25,8 @@ volatile TCB_t* volatile pxCurrentTCB{nullptr};
 
 constexpr int TASK_MAX{4};
 static TCB_t task_tcbs[TASK_MAX] = { {nullptr, }, };
-static uint16_t task_n{0};
+static uint16_t task_current{0};
+static uint16_t task_total{0};
 
 static StackType_t* pxPortInitialiseStack(StackType_t* pxTopOfStack,
 										  TaskFunction_t pxCode,
@@ -95,8 +96,10 @@ static void prvInitialiseNewTask(TaskFunction_t pxTaskCode,
 
 static void AddTask(TaskFunction_t pxTaskCode, void *const pvParameters)
 {
-	TCB_t* pxNewTCB = &task_tcbs[task_n++];
-	if (task_n >= TASK_MAX) { task_n = 0; }
+	TCB_t* pxNewTCB = &task_tcbs[task_total++];
+	if (task_total >= TASK_MAX) {
+		task_total = 0; // overwrite circular (silent fail!!!)
+	}
 
 	prvInitialiseNewTask(pxTaskCode, pvParameters, pxNewTCB);
 	pxCurrentTCB = pxNewTCB;
@@ -221,7 +224,7 @@ static void start() {
 
 	AddTask(slow, &led_mask);
 	AddTask(fast, &led_mask);
-	task_n = 1;
+	task_current = task_total - 1;
 
 	/* Restore the context of the first task that is going to run. */
 	portRESTORE_CONTEXT();
@@ -240,11 +243,14 @@ static void timer_init()
 	TCCR1B |= (1 << CS12) | (1 << CS10);	/* Timer clock prescaler 1024 */
 }
 
-ISR (TIMER1_COMPA_vect, ISR_NAKED)
+ISR(TIMER1_COMPA_vect, ISR_NAKED)
 {
 	portSAVE_CONTEXT();
-	task_n = (task_n == 1) ? 0 : 1;
-	pxCurrentTCB = &task_tcbs[task_n];
+	task_current++;
+	if (task_current >= task_total) {
+		task_current = 0;
+	}
+	pxCurrentTCB = &task_tcbs[task_current];
 	portRESTORE_CONTEXT();
 	__asm__ __volatile__ ( "reti" );
 }
