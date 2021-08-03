@@ -202,8 +202,9 @@ static void USART_Transmit(unsigned char data)
 	UDR0 = data;
 }
 
-static void task_uart([[maybe_unused]] void* p)
+static void task_uart(void* p)
 {
+	static_cast<void>(p);
 	unsigned char data = '\0';
 	while (true) {
 		USART_Transmit(data++);
