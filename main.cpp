@@ -7,7 +7,6 @@
 static constexpr uint8_t PB5_MASK {0b0010'0000};
 
 /* ================================================================================================================ */
-uint8_t ctx[512];
 
 struct TaskControlBlock_t;
 typedef struct TaskControlBlock_t* TaskHandle_t;
@@ -21,19 +20,23 @@ typedef void (* TaskFunction_t)( void * );
 
 typedef struct xMEMORY_REGION
 {
-	void * pvBaseAddress;
+	void* pvBaseAddress;
 	uint32_t ulLengthInBytes;
 	uint32_t ulParameters;
 } MemoryRegion_t;
 
-typedef struct tskTaskControlBlock       /* The old naming convention is used to prevent breaking kernel aware debuggers. */
+struct TCB_t       /* The old naming convention is used to prevent breaking kernel aware debuggers. */
 {
-	volatile StackType_t * pxTopOfStack; /*< Points to the location of the last item placed on the tasks stack.  THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT. */
-	StackType_t * pxStack;                      /*< Points to the start of the stack. */
-	char pcTaskName[ 8 ]; /*< Descriptive name given to the task when created.  Facilitates debugging only. */ /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
-} TCB_t;
+	volatile StackType_t* pxTopOfStack; /*< Points to the location of the last item placed on the tasks stack.  THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT. */
+	StackType_t* pxStack = &bs_stack[255];                      /*< Points to the start of the stack. */
+	StackType_t bs_stack[256];
+};
 volatile TCB_t* volatile pxCurrentTCB {nullptr};
 
+constexpr int TASK_MAX {4};
+// static uint8_t ctx[512];
+static TCB_t task_tcbs[TASK_MAX];
+static uint16_t task_n;
 
 StackType_t *pxPortInitialiseStack( StackType_t *pxTopOfStack, TaskFunction_t pxCode, void *pvParameters )
 {
@@ -107,58 +110,16 @@ static void prvInitialiseNewTask( TaskFunction_t pxTaskCode,
 	}
 }
 
-BaseType_t xTaskCreate2( TaskFunction_t pxTaskCode,
+void xTaskCreate2( TaskFunction_t pxTaskCode,
 							void * const pvParameters,
 							TaskHandle_t * const pxCreatedTask )
-	{
-		TCB_t * pxNewTCB;
-		BaseType_t xReturn;
+{
+	TCB_t* pxNewTCB = &task_tcbs[task_n++];
+	if (task_n >= TASK_MAX) { task_n = 0; }
 
-		/* If the stack grows down then allocate the stack then the TCB so the stack
-		* does not grow into the TCB.  Likewise if the stack grows up then allocate
-		* the TCB then the stack. */
-		StackType_t * pxStack;
-
-		/* Allocate space for the stack used by the task being created. */
-		pxStack = (StackType_t*)&ctx[128];
-//                pxStack = ( StackType_t * ) pvPortMallocStack( ( ( ( size_t ) uxStackDepth ) * sizeof( StackType_t ) ) ); /*lint !e9079 All values returned by pvPortMalloc() have at least the alignment required by the MCU's stack and this allocation is the stack. */
-
-		if( pxStack != NULL )
-		{
-			/* Allocate space for the TCB. */
-			pxNewTCB = (TCB_t*)&ctx[256];
-//                    pxNewTCB = ( TCB_t * ) pvPortMalloc( sizeof( TCB_t ) ); /*lint !e9087 !e9079 All values returned by pvPortMalloc() have at least the alignment required by the MCU's stack, and the first member of TCB_t is always a pointer to the task's stack. */
-
-			if( pxNewTCB != NULL )
-			{
-				/* Store the stack location in the TCB. */
-				pxNewTCB->pxStack = pxStack;
-			}
-			else
-			{
-				/* The stack cannot be used as the TCB was not created.  Free
-				* it again. */
-//                        vPortFreeStack( pxStack );
-			}
-		}
-		else
-		{
-			pxNewTCB = NULL;
-		}
-
-		if( pxNewTCB != NULL )
-		{
-			prvInitialiseNewTask( pxTaskCode, pvParameters, pxCreatedTask, pxNewTCB );
-			pxCurrentTCB = pxNewTCB;
-			xReturn = 0;
-		}
-		else
-		{
-			xReturn = 1;
-		}
-
-		return xReturn;
-	}
+	prvInitialiseNewTask(pxTaskCode, pvParameters, pxCreatedTask, pxNewTCB);
+	pxCurrentTCB = pxNewTCB;
+}
 
 
 #define portRESTORE_CONTEXT()                                                           \
@@ -286,6 +247,7 @@ static void fast([[maybe_unused]] void* p)
 }
 
 void setup() {
+	xTaskCreate2(slow, nullptr, nullptr);
 	xTaskCreate2(fast, nullptr, nullptr);
 
 	/* Restore the context of the first task that is going to run. */
@@ -306,12 +268,17 @@ static void timer_init()
 	TCCR1B |= (1 << CS12) | (1 << CS10);	/* Timer clock prescaler 1024 */
 }
 
-ISR (TIMER1_COMPA_vect, ISR_NAKED)
+// ISR (TIMER1_COMPA_vect, ISR_NAKED)
+// {
+// 	portSAVE_CONTEXT();
+// 	PORTB ^= PB5_MASK;
+// 	portRESTORE_CONTEXT();
+// 	__asm__ __volatile__ ( "reti" );
+// }
+
+ISR (TIMER1_COMPA_vect)
 {
-	portSAVE_CONTEXT();
 	PORTB ^= PB5_MASK;
-	portRESTORE_CONTEXT();
-	__asm__ __volatile__ ( "ret" );
 }
 
 int main()
