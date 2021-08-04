@@ -1,7 +1,6 @@
 #include <avr/io.h>
 #include <stdint.h>
 #include <avr/interrupt.h>
-#include <util/delay.h>
 
 #define BAUD 9600
 #define UART_UBRR F_CPU / 16 / BAUD - 1
@@ -222,10 +221,10 @@ static uint32_t jiffies{0};
 	asm volatile( "" ::: "memory" );		\
 	RESTORE_CONTEXT();
 
-static void wait_desiseconds(uint32_t period)
+static void wait_desiseconds(uint32_t duration)
 {
 	uint32_t epoch = jiffies;
-	while ((jiffies - epoch) < period) {
+	while ((jiffies - epoch) < duration) {
 		asm volatile( "" ::: "memory" );
 	}
 }
@@ -314,7 +313,6 @@ int main()
 	startTasks();
 
 	while (true) {
-		_delay_ms(2500);
 		PORTB ^= PB5_MASK;
 	}
 
