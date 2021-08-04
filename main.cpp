@@ -1,7 +1,7 @@
 #include <avr/io.h>
-#include <util/delay.h>
 #include <stdint.h>
 #include <avr/interrupt.h>
+#include <util/delay.h>
 
 #define BAUD 9600
 #define UART_UBRR F_CPU / 16 / BAUD - 1
@@ -209,6 +209,8 @@ static void startTasks()
 	__asm__ __volatile__ ( "ret" );
 }
 
+static uint32_t jiffies{0};
+
 #define SWITCH_CONTEXT()				\
 	SAVE_CONTEXT();					\
 	task_current++;					\
@@ -216,7 +218,17 @@ static void startTasks()
 		task_current = 0;			\
 	}						\
 	pxCurrentTCB = &task_tcbs[task_current];	\
+	jiffies++;					\
+	asm volatile( "" ::: "memory" );		\
 	RESTORE_CONTEXT();
+
+static void wait_desiseconds(uint32_t period)
+{
+	uint32_t epoch = jiffies;
+	while ((jiffies - epoch) < period) {
+		asm volatile( "" ::: "memory" );
+	}
+}
 
 /* =========================================== Timer =========================================== */
 static void TIMER_init()
@@ -255,7 +267,7 @@ static void task_uart(void* p)
 	unsigned char data = '\0';
 	while (true) {
 		USART_Transmit(data++);
-		_delay_ms(100);
+		wait_desiseconds(5);
 	}
 }
 
@@ -263,11 +275,11 @@ static void task_slow(void* p)
 {
 	for ( ; ; ) {
 		for (int i = 0; i < 8; i++) {
-			_delay_ms(200);
+			wait_desiseconds(8);
 			PORTB ^= *((uint8_t*)p);
 		}
 		for (int i = 0; i < 8; i++) {
-			_delay_ms(100);
+			wait_desiseconds(4);
 			PORTB ^= *((uint8_t*)p);
 		}
 	}
@@ -278,7 +290,7 @@ static void task_fast(void* p)
 	uint8_t mask = *((uint8_t*)p);
 
 	for ( ; ; ) {
-		_delay_ms(100);
+		wait_desiseconds(2);
 		PORTB ^= mask;
 	}
 }
