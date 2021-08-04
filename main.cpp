@@ -76,33 +76,15 @@ static StackType_t* pxPortInitialiseStack(
 	return pxTopOfStack;
 }
 
-static void prvInitialiseNewTask(
-	TaskFunction_t pxTaskCode, void *const pvParameters, TCB_t* pxNewTCB )
-{
-	StackType_t* pxTopOfStack;
-
-	/* Calculate the top of stack address. This depends on whether the stack
-	 * grows from high memory to low (as per the 80x86) or vice versa.
-	 * portSTACK_GROWTH is used to make the result positive or negative as required
-	 * by the port. */
-	pxTopOfStack = pxNewTCB->pxStack;
-
-	/* Initialize the TCB stack to look as if the task was already running,
-	 * but had been interrupted by the scheduler.  The return address is set
-	 * to the start of the task function. Once the stack has been initialised
-	 * the top of stack variable is updated. */
-	pxNewTCB->pxTopOfStack = pxPortInitialiseStack(pxTopOfStack, pxTaskCode, pvParameters);
-	asm volatile( "" ::: "memory" );
-}
-
-static void AddTask(TaskFunction_t pxTaskCode, void *const pvParameters)
+static void addTask(TaskFunction_t pxTaskCode, void *const pvParameters)
 {
 	TCB_t* pxNewTCB = &task_tcbs[task_total++];
 	if (task_total >= TASK_MAX) {
 		task_total = 0; // overwrite circular, silent fail!
 	}
 
-	prvInitialiseNewTask(pxTaskCode, pvParameters, pxNewTCB);
+	pxNewTCB->pxTopOfStack = pxPortInitialiseStack(pxNewTCB->pxStack, pxTaskCode, pvParameters);
+	asm volatile( "" ::: "memory" );
 	pxCurrentTCB = pxNewTCB;
 	asm volatile( "" ::: "memory" );
 }
@@ -240,9 +222,9 @@ static void start() {
 	static uint8_t led5_mask = 0b00100000;
 	uint8_t led4_mask = 1 << PB4;
 
-	AddTask(task_uart, nullptr);
-	AddTask(task_slow, &led5_mask);
-	AddTask(task_fast, &led4_mask);
+	addTask(task_uart, nullptr);
+	addTask(task_slow, &led5_mask);
+	addTask(task_fast, &led4_mask);
 	task_current = task_total - 1;
 
 	/* Restore the context of the first task that is going to run. */
