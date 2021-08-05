@@ -2,9 +2,11 @@
 #include <stdint.h>
 #include <avr/interrupt.h>
 
+
 #define BAUD 9600
 #define UART_UBRR F_CPU / 16 / BAUD - 1
 #define ARRAY_LEN(arr) sizeof(arr) / (sizeof((arr)[0]))
+
 static constexpr uint8_t PB5_MASK {0b0010'0000};
 
 /* ======================================== Task context ======================================== */
@@ -13,6 +15,7 @@ typedef void(*TaskFunction_t)(void*);
 #define portFLAGS_INT_ENABLED ((StackType_t)0x80)
 
 enum class status { OK, NOK };
+
 class scope_lock {
 	uint8_t enabled_interrupts_{};
 public:
@@ -37,8 +40,8 @@ struct TCB_t {
 	* THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT.
 	*/
 	StackType_t* pxTopOfStack;
-	StackType_t* pxStack = &bs_stack[ARRAY_LEN(bs_stack) - 1]; /*< Points to the start of the stack. */
-	StackType_t bs_stack[128] = { 0, };
+	StackType_t* pxStack = &bs_stack[ARRAY_LEN(bs_stack) - 1]; /* Start of the stack */
+	StackType_t bs_stack[128+64] = { 0, };
 };
 
 TCB_t* pxCurrentTCB{nullptr};
@@ -101,10 +104,10 @@ static status addTask(TaskFunction_t pxTaskCode, void *const pvParameters)
 		return status::NOK;
 	}
 
-	TCB_t* pxNewTCB = &task_tcbs[task_total++];
-	pxNewTCB->pxTopOfStack = pxPortInitialiseStack(pxNewTCB->pxStack, pxTaskCode, pvParameters);
+	TCB_t* newTCB = &task_tcbs[task_total++];
+	newTCB->pxTopOfStack = pxPortInitialiseStack(newTCB->pxStack, pxTaskCode, pvParameters);
 	asm volatile( "" ::: "memory" );
-	pxCurrentTCB = pxNewTCB;
+	pxCurrentTCB = newTCB;
 	return status::OK;
 }
 
@@ -210,16 +213,18 @@ static void startTasks()
 
 static uint32_t jiffies{0};
 
-#define SWITCH_CONTEXT()				\
-	SAVE_CONTEXT();					\
-	task_current++;					\
-	if (task_current >= task_total) {		\
-		task_current = 0;			\
-	}						\
-	pxCurrentTCB = &task_tcbs[task_current];	\
-	jiffies++;					\
-	asm volatile( "" ::: "memory" );		\
+static void switchTask()
+{
+	SAVE_CONTEXT();
+	task_current++;
+	if (task_current >= task_total) {
+		task_current = 0;
+	}
+	pxCurrentTCB = &task_tcbs[task_current];
+	jiffies++;
+	asm volatile( "" ::: "memory" );
 	RESTORE_CONTEXT();
+}
 
 static void wait_desiseconds(uint32_t duration)
 {
@@ -232,16 +237,16 @@ static void wait_desiseconds(uint32_t duration)
 /* =========================================== Timer =========================================== */
 static void TIMER_init()
 {
-	TCCR1B |= (1 << WGM12);			/* Select CTC mode of Timer1 */
-	TIMSK1 |= (1 << OCIE1A);		/* Enable timer compare interrupt */
-	OCR1AH = 0x05;				/* Output compare register A high byte */
-	OCR1AL = 0xFF;				/* Output compare register A low byte */
-	TCCR1B |= (1 << CS12) | (1 << CS10);	/* Timer clock prescaler 1024 */
+	constexpr uint16_t timer_clock_prescaler = 1024;
+	TCCR1B |= (1 << WGM12);				/* Select CTC mode of Timer1 */
+	TIMSK1 |= (1 << OCIE1A);			/* Enable timer compare interrupt */
+	TCCR1B |= (1 << CS12) | (1 << CS10);		/* Timer clock prescaler 1024 */
+	OCR1A = F_CPU / timer_clock_prescaler / 10;	/* Output compare register A to get 10Hz */
 }
 
 ISR(TIMER1_COMPA_vect, ISR_NAKED)
 {
-	SWITCH_CONTEXT();
+	switchTask();
 	__asm__ __volatile__ ( "reti" );
 }
 
@@ -278,7 +283,7 @@ static void task_slow(void* p)
 			PORTB ^= *((uint8_t*)p);
 		}
 		for (int i = 0; i < 8; i++) {
-			wait_desiseconds(4);
+			wait_desiseconds(3);
 			PORTB ^= *((uint8_t*)p);
 		}
 	}
