@@ -7,8 +7,6 @@
 #define UART_UBRR F_CPU / 16 / BAUD - 1
 #define ARRAY_LEN(arr) sizeof(arr) / (sizeof((arr)[0]))
 
-static constexpr uint8_t PB5_MASK {0b0010'0000};
-
 /* ======================================== Task context ======================================== */
 typedef uint8_t StackType_t;
 typedef void(*TaskFunction_t)(void*);
@@ -304,8 +302,7 @@ int main()
 	static uint8_t led5_mask = 0b00100000;
 	uint8_t led4_mask = 1 << PB4;
 
-	PORTB |= PB5_MASK | (1 << PB4);
-	DDRB  |= PB5_MASK | (1 << PB4);
+	DDRB  |= led5_mask | (1 << PB4);
 
 	USART_Init(UART_UBRR);
 	TIMER_init();
@@ -318,7 +315,7 @@ int main()
 	startTasks();
 
 	while (true) {
-		PORTB ^= PB5_MASK;
+		PORTB ^= led5_mask;
 	}
 
 	return 0;
