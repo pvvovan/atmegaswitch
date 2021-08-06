@@ -38,17 +38,18 @@ struct TCB_t {
 	*/
 	StackType_t* pxTopOfStack;
 	StackType_t* pxStack = *(&bs_stack + 1) - 1; /* Start of the stack */
+private:
 	StackType_t bs_stack[192] = { 0, };
 };
 
 TCB_t* pxCurrentTCB{nullptr};
 
 constexpr uint8_t TASK_MAX{8};
-static TCB_t task_tcbs[TASK_MAX] = { {nullptr, }, };
+static TCB_t task_tcbs[TASK_MAX] = { TCB_t{}, };
 static uint16_t task_current{0};
 static uint16_t task_total{0};
 
-static StackType_t* pxPortInitialiseStack(
+static StackType_t* initializeStack(
 	StackType_t* pxTopOfStack, TaskFunction_t pxCode, void *const pvParameters)
 {
 	uint16_t usAddress;
@@ -57,7 +58,7 @@ static StackType_t* pxPortInitialiseStack(
 
 	/* The start of the task code will be popped off the stack last, so place
 	 * it on first. */
-	usAddress = (uint16_t) pxCode;
+	usAddress = (uint16_t)pxCode;
 	*pxTopOfStack = (StackType_t)(usAddress & (uint16_t)0x00ff);
 	pxTopOfStack--;
 
@@ -102,7 +103,7 @@ static status addTask(TaskFunction_t pxTaskCode, void *const pvParameters)
 	}
 
 	TCB_t* newTCB = &task_tcbs[task_total++];
-	newTCB->pxTopOfStack = pxPortInitialiseStack(newTCB->pxStack, pxTaskCode, pvParameters);
+	newTCB->pxTopOfStack = initializeStack(newTCB->pxStack, pxTaskCode, pvParameters);
 	asm volatile( "" ::: "memory" );
 	pxCurrentTCB = newTCB;
 	return status::OK;
