@@ -5,23 +5,22 @@
 
 #define BAUD 9600
 #define UART_UBRR F_CPU / 16 / BAUD - 1
-#define ARRAY_LEN(arr) sizeof(arr) / (sizeof((arr)[0]))
 
 /* ======================================== Task context ======================================== */
 typedef uint8_t StackType_t;
 typedef void(*TaskFunction_t)(void*);
-#define portFLAGS_INT_ENABLED ((StackType_t)0x80)
+
+#define FLAGS_INT_ENABLED ((StackType_t)0x80)
 
 enum class status { OK, NOK };
 
 class scope_lock {
-	uint8_t enabled_interrupts_{};
-public:
 	scope_lock(const scope_lock&)			= delete;
 	scope_lock(scope_lock&&)			= delete;
 	scope_lock& operator=(const scope_lock&)	= delete;
 	scope_lock& operator=(scope_lock&&)		= delete;
-
+	uint8_t enabled_interrupts_{};
+public:
 	scope_lock() {
 		enabled_interrupts_ = SREG;
 		cli();
@@ -38,13 +37,13 @@ struct TCB_t {
 	* THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT.
 	*/
 	StackType_t* pxTopOfStack;
-	StackType_t* pxStack = &bs_stack[ARRAY_LEN(bs_stack) - 1]; /* Start of the stack */
-	StackType_t bs_stack[128+64] = { 0, };
+	StackType_t* pxStack = *(&bs_stack + 1) - 1; /* Start of the stack */
+	StackType_t bs_stack[192] = { 0, };
 };
 
 TCB_t* pxCurrentTCB{nullptr};
 
-constexpr int TASK_MAX{8};
+constexpr uint8_t TASK_MAX{8};
 static TCB_t task_tcbs[TASK_MAX] = { {nullptr, }, };
 static uint16_t task_current{0};
 static uint16_t task_total{0};
@@ -58,36 +57,36 @@ static StackType_t* pxPortInitialiseStack(
 
 	/* The start of the task code will be popped off the stack last, so place
 	 * it on first. */
-	usAddress = ( uint16_t ) pxCode;
-	*pxTopOfStack = ( StackType_t ) ( usAddress & ( uint16_t ) 0x00ff );
+	usAddress = (uint16_t) pxCode;
+	*pxTopOfStack = (StackType_t)(usAddress & (uint16_t)0x00ff);
 	pxTopOfStack--;
 
 	usAddress >>= 8;
-	*pxTopOfStack = ( StackType_t ) ( usAddress & ( uint16_t ) 0x00ff );
+	*pxTopOfStack = (StackType_t)(usAddress & (uint16_t)0x00ff);
 	pxTopOfStack--;
 
-	/* Next simulate the stack as if after a call to portSAVE_CONTEXT().
-	 * portSAVE_CONTEXT places the flags on the stack immediately after r0
+	/* Next simulate the stack as if after a call to SAVE_CONTEXT().
+	 * SAVE_CONTEXT() places the flags on the stack immediately after r0
 	 * to ensure the interrupts get disabled as soon as possible, and so ensuring
 	 * the stack use is minimal should a context switch interrupt occur. */
-	*pxTopOfStack = ( StackType_t ) 0x00;    /* R0 */
+	*pxTopOfStack = (StackType_t)0x00;    /* R0 */
 	pxTopOfStack--;
-	*pxTopOfStack = portFLAGS_INT_ENABLED;
+	*pxTopOfStack = FLAGS_INT_ENABLED;
 	pxTopOfStack--;
 
 	/* Now the remaining registers. The compiler expects R1 to be 0. */
-	*pxTopOfStack = ( StackType_t ) 0x00;    /* R1 */
+	*pxTopOfStack = (StackType_t)0x00;    /* R1 */
 
 	/* Leave R2 - R23 untouched */
 	pxTopOfStack -= 23;
 
 	/* Place the parameter on the stack in the expected location. */
-	usAddress = ( uint16_t ) pvParameters;
-	*pxTopOfStack = ( StackType_t ) ( usAddress & ( uint16_t ) 0x00ff );
+	usAddress = (uint16_t)pvParameters;
+	*pxTopOfStack = (StackType_t)(usAddress & (uint16_t)0x00ff);
 	pxTopOfStack--;
 
 	usAddress >>= 8;
-	*pxTopOfStack = ( StackType_t ) ( usAddress & ( uint16_t ) 0x00ff );
+	*pxTopOfStack = (StackType_t)(usAddress & (uint16_t)0x00ff);
 
 	/* Leave register R26 - R31 untouched */
 	pxTopOfStack -= 7;
@@ -209,31 +208,17 @@ static void startTasks()
 	__asm__ __volatile__ ( "ret" );
 }
 
-static uint32_t jiffies{0};
-
 static void switchTask()
 {
-	SAVE_CONTEXT();
 	task_current++;
 	if (task_current >= task_total) {
 		task_current = 0;
 	}
 	pxCurrentTCB = &task_tcbs[task_current];
-	jiffies++;
-	asm volatile( "" ::: "memory" );
-	RESTORE_CONTEXT();
-}
-
-static void wait_desiseconds(uint32_t duration)
-{
-	uint32_t epoch = jiffies;
-	while ((jiffies - epoch) < duration) {
-		asm volatile( "" ::: "memory" );
-	}
 }
 
 /* =========================================== Timer =========================================== */
-static void TIMER_init()
+static void TIMER_Init()
 {
 	constexpr uint16_t timer_clock_prescaler = 1024;
 	TCCR1B |= (1 << WGM12);				/* Select CTC mode of Timer1 */
@@ -242,10 +227,24 @@ static void TIMER_init()
 	OCR1A = F_CPU / timer_clock_prescaler / 10;	/* Output compare register A to get 10Hz */
 }
 
+static uint32_t jiffies{0};
+
 ISR(TIMER1_COMPA_vect, ISR_NAKED)
 {
+	SAVE_CONTEXT();
 	switchTask();
+	jiffies++;
+	asm volatile( "" ::: "memory" );
+	RESTORE_CONTEXT();
 	__asm__ __volatile__ ( "reti" );
+}
+
+static void wait_desiseconds(uint32_t duration)
+{
+	uint32_t epoch = jiffies;
+	while ((jiffies - epoch) < duration) {
+		asm volatile( "" ::: "memory" );
+	}
 }
 
 /* =========================================== Usart =========================================== */
@@ -305,7 +304,7 @@ int main()
 	DDRB  |= led5_mask | (1 << PB4);
 
 	USART_Init(UART_UBRR);
-	TIMER_init();
+	TIMER_Init();
 	sei();
 
 	addTask(task_uart, nullptr);
