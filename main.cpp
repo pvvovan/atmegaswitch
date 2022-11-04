@@ -1,6 +1,9 @@
 #include <avr/io.h>
-#include <stdint.h>
 #include <avr/interrupt.h>
+#include <util/delay.h>
+
+#include <stdint.h>
+#include <stdlib.h>
 
 
 #define BAUD 9600
@@ -33,21 +36,22 @@ public:
 
 struct TCB_t {
 	/**
-	* Points to the location of the last item placed on the tasks stack.
-	* THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT.
-	*/
-	StackType_t* pxTopOfStack;
-	StackType_t* pxStack = *(&bs_stack + 1) - 1; /* Start of the stack */
+	 * Points to the location of the last item placed on the tasks stack.
+	 * THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT.
+	 */
+	StackType_t* pTopOfStack {nullptr};
+	StackType_t* pStack = &bs_stack[STACK_SIZE - 1]; /* Start of the stack */
 private:
-	StackType_t bs_stack[192] = { 0, };
+	static constexpr size_t STACK_SIZE {256};
+	StackType_t bs_stack[STACK_SIZE] = { 0 };
 };
 
 TCB_t* pxCurrentTCB{nullptr};
 
-constexpr uint8_t TASK_MAX{8};
-static TCB_t task_tcbs[TASK_MAX] = { TCB_t{}, };
-static uint16_t task_current{0};
-static uint16_t task_total{0};
+constexpr uint8_t TASK_MAX {7};
+static TCB_t task_tcbs[TASK_MAX] = { TCB_t{} };
+static uint16_t task_current {0};
+static uint16_t task_total {0};
 
 static StackType_t* initializeStack(
 	StackType_t* pxTopOfStack, TaskFunction_t pxCode, void *const pvParameters)
@@ -103,7 +107,7 @@ static status addTask(TaskFunction_t pxTaskCode, void *const pvParameters)
 	}
 
 	TCB_t* newTCB = &task_tcbs[task_total++];
-	newTCB->pxTopOfStack = initializeStack(newTCB->pxStack, pxTaskCode, pvParameters);
+	newTCB->pTopOfStack = initializeStack(newTCB->pStack, pxTaskCode, pvParameters);
 	asm volatile( "" ::: "memory" );
 	pxCurrentTCB = newTCB;
 	return status::OK;
@@ -316,6 +320,7 @@ int main()
 
 	while (true) {
 		PORTB ^= led5_mask;
+		_delay_ms(100);
 	}
 
 	return 0;

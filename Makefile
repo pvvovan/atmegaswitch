@@ -15,10 +15,12 @@ AVRDUDE_WRITE_FLASH = -U flash:w:$(TARGET).hex
 # AVRDUDE_WRITE_EEPROM = -U eeprom:w:$(TARGET).eep
 AVRDUDE_FLAGS = -p $(MCU) -c $(AVRDUDE_PROGRAMMER)
 
+WARN = -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion
+
 all:
-	$(CC) main.cpp -mmcu=$(MCU) -std=c++17 --output $(TARGET).elf -D F_CPU=16000000 -O2 -Wall -Wextra
+	$(CC) main.cpp -mmcu=$(MCU) -std=c++17 --output $(TARGET).elf -D F_CPU=16000000 -O2 $(WARN)
 	$(OBJCOPY) -O $(FORMAT) -R .eeprom $(TARGET).elf $(TARGET).hex
 	$(SIZE) -A $(TARGET).elf
 
-flash:
+flash: all
 	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_FLASH) $(AVRDUDE_WRITE_EEPROM)
