@@ -1,1 +1,3 @@
-Context switch implementation in C++17 with three tasks running on atmega328p
+Context switch with concurrent tasks running on atmega328p
+
+Primitive preemptive scheduler with no priorities

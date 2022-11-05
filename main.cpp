@@ -44,7 +44,7 @@ private:
 	StackType_t bs_stack[STACK_SIZE] = { 0 };
 };
 
-TCB_t* pxCurrentTCB{nullptr};
+TCB_t* pxCurrentTCB {nullptr};
 
 constexpr uint8_t TASK_MAX {7};
 static TCB_t task_tcbs[TASK_MAX] = { TCB_t{} };
@@ -230,7 +230,7 @@ static void TIMER_Init()
 	OCR1A = F_CPU / timer_clock_prescaler / 10;	/* Output compare register A to get 10Hz */
 }
 
-static uint32_t jiffies{0};
+static uint32_t jiffies {0};
 
 ISR(TIMER1_COMPA_vect, ISR_NAKED)
 {
@@ -260,8 +260,10 @@ static void USART_Init(uint16_t ubrr)
 
 static void USART_Transmit(unsigned char data)
 {
-	while (!(UCSR0A & (1 << UDRE0))) { }	/* Wait for empty transmit buffer */
-	UDR0 = data;				/* Put data into buffer to send the data */
+	while (!(UCSR0A & (1 << UDRE0))) {
+		/* Wait for empty transmit buffer */
+	}
+	UDR0 = data;	/* Put data into buffer to send the data */
 }
 
 /* ============================================ App ============================================ */
