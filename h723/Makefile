@@ -36,6 +36,8 @@ BUILD_DIR = build
 ######################################
 # C sources
 C_SOURCES = \
+Core/Src/job.c \
+Core/Src/sched.c \
 Core/Src/main.c \
 Core/Src/gpio.c \
 Core/Src/eth.c \
