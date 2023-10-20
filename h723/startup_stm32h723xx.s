@@ -140,7 +140,7 @@ g_pfnVectors:
   .word  vPortSVCHandler
   .word  DebugMon_Handler
   .word  0
-  .word  PendSV_Handler
+  .word  xPortPendSVHandler
   .word  SysTick_Handler
 
   /* External Interrupts */
