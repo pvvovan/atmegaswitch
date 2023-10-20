@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "stm32h7xx_hal.h"
 #include "sched.h"
 #include "job.h"
 
@@ -6,6 +7,9 @@
 #define portSTACK_TYPE	uint32_t
 typedef portSTACK_TYPE	StackType_t;
 typedef void (* TaskFunction_t)( void * );
+
+#define portNVIC_INT_CTRL_REG     ( *( ( volatile uint32_t * ) 0xE000ED04UL ) )
+#define portNVIC_PENDSVSET_BIT    ( 1UL << 28UL )
 
 /* configMAX_SYSCALL_INTERRUPT_PRIORITY sets the interrupt priority above which
  * FreeRTOS API calls must not be made.  Interrupts above this priority are never
@@ -202,4 +206,19 @@ __attribute__((naked)) void xPortPendSVHandler(void)
 	"pxCurrentTCBConst: .word pxCurrentTCB  \n"
 	::"i" (configMAX_SYSCALL_INTERRUPT_PRIORITY)
 	);
+}
+
+void xPortSysTickHandler(void)
+{
+	HAL_IncTick();
+
+	__asm volatile ("cpsid i" : : : "memory");
+	__asm volatile ("dsb" : : : "memory");
+	__asm volatile ("isb" : : : "memory");
+
+	/* A context switch is required. Context switching is performed in
+	* the PendSV interrupt. Pend the PendSV interrupt. */
+	portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
+
+	__asm volatile ("cpsie i" : : : "memory");
 }

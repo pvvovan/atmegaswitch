@@ -31,8 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define portNVIC_INT_CTRL_REG     ( *( ( volatile uint32_t * ) 0xE000ED04UL ) )
-#define portNVIC_PENDSVSET_BIT    ( 1UL << 28UL )
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -188,16 +187,6 @@ void SysTick_Handler(void)
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
-
-  __asm volatile ("cpsid i" : : : "memory");
-  __asm volatile ("dsb" : : : "memory");
-  __asm volatile ("isb" : : : "memory");
-
-  /* A context switch is required. Context switching is performed in
-   * the PendSV interrupt. Pend the PendSV interrupt. */
-  portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
-
-  __asm volatile ("cpsie i" : : : "memory");
 
   /* USER CODE END SysTick_IRQn 1 */
 }
