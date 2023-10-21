@@ -22,7 +22,11 @@ TARGET = h723
 # debug build?
 DEBUG = 1
 # optimization
-OPT = -O0
+ifeq ($(DEBUG), 1)
+OPT = -O0 -g3 -gdwarf-5
+else
+OPT = -O3 -g0
+endif
 
 
 #######################################
@@ -135,11 +139,6 @@ C_INCLUDES = \
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
 
 CFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
-
-ifeq ($(DEBUG), 1)
-CFLAGS += -g3 -gdwarf-5
-ASFLAGS += -g3 -gdwarf-5
-endif
 
 
 # Generate dependency information
