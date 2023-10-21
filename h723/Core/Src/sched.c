@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <stddef.h>
+
 #include "stm32h7xx_hal.h"
 #include "sched.h"
 #include "job.h"
@@ -37,7 +39,7 @@ typedef void (* TaskFunction_t)( void * );
 typedef struct tskTaskControlBlock /* The old naming convention is used to prevent breaking kernel aware debuggers. */
 {
 	/* Points to the location of the last item placed on the tasks stack.
-	THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT. */
+	 * THIS MUST BE THE FIRST MEMBER OF THE TCB STRUCT. */
 	volatile StackType_t *pxTopOfStack;
 	StackType_t Stack[STACK_SIZE] __attribute__((aligned(8)));
 } tskTCB;
@@ -54,29 +56,29 @@ static void prvTaskExitError(void)
 
 
 static StackType_t * pxPortInitialiseStack(
-	StackType_t * pxTopOfStack,
+	StackType_t *pxTopOfStack,
 	TaskFunction_t pxCode,
-	void * pvParameters)
+	void *pvParameters)
 {
 	/* Simulate the stack frame as it would be created by a context switch
-	* interrupt. */
+	 * interrupt. */
 
 	/* Offset added to account for the way the MCU uses the stack on entry/exit
-	* of interrupts, and to ensure alignment. */
+	 * of interrupts, and to ensure alignment. */
 	pxTopOfStack--;
 
-	*pxTopOfStack = portINITIAL_XPSR;                                    /* xPSR */
+	*pxTopOfStack = portINITIAL_XPSR;				    /* xPSR */
 	pxTopOfStack--;
 	*pxTopOfStack = ( ( StackType_t ) pxCode ) & portSTART_ADDRESS_MASK; /* PC */
 	pxTopOfStack--;
-	*pxTopOfStack = ( StackType_t ) portTASK_RETURN_ADDRESS;             /* LR */
+	*pxTopOfStack = ( StackType_t ) portTASK_RETURN_ADDRESS;	     /* LR */
 
 	/* Save code space by skipping register initialisation. */
-	pxTopOfStack -= 5;                            /* R12, R3, R2 and R1. */
+	pxTopOfStack -= 5;			    /* R12, R3, R2 and R1. */
 	*pxTopOfStack = ( StackType_t ) pvParameters; /* R0 */
 
 	/* A save method is being used that requires each task to maintain its
-	* own exec return value. */
+	 * own exec return value. */
 	pxTopOfStack--;
 	*pxTopOfStack = portINITIAL_EXC_RETURN;
 
@@ -108,18 +110,21 @@ static void prvPortStartFirstTask(void)
 	);
 }
 
+#define TASK_NUM	3
 TCB_t *volatile pxCurrentTCB;
-static TCB_t tcb_one = { 0 };
-static TCB_t tcb_two = { 0 };
+static TCB_t tcbs[TASK_NUM] = { 0 };
 
 void start_scheduler(void)
 {
-	__asm volatile ("cpsid i" : : : "memory");
-	__asm volatile ("dsb" : : : "memory");
-	__asm volatile ("isb" : : : "memory");
-	tcb_one.pxTopOfStack = pxPortInitialiseStack(&tcb_one.Stack[STACK_SIZE - 1], &job1, 0);
-	tcb_two.pxTopOfStack = pxPortInitialiseStack(&tcb_two.Stack[STACK_SIZE - 1], &job2, 0);
-	pxCurrentTCB = &tcb_two;
+	__asm volatile ("cpsid i"	: : : "memory");
+	__asm volatile ("dsb"		: : : "memory");
+	__asm volatile ("isb"		: : : "memory");
+
+	tcbs[0].pxTopOfStack = pxPortInitialiseStack(&tcbs[0].Stack[STACK_SIZE - 1], &job0, NULL);
+	tcbs[1].pxTopOfStack = pxPortInitialiseStack(&tcbs[1].Stack[STACK_SIZE - 1], &job1, NULL);
+	tcbs[2].pxTopOfStack = pxPortInitialiseStack(&tcbs[2].Stack[STACK_SIZE - 1], &job2, NULL);
+
+	pxCurrentTCB = &tcbs[1];
 	prvPortStartFirstTask();
 }
 
@@ -127,11 +132,7 @@ void vTaskSwitchContext(void)
 {
 	static uint8_t i = 0;
 	i++;
-	if ((i % 2) == 1) {
-		pxCurrentTCB = &tcb_one;
-	} else {
-		pxCurrentTCB = &tcb_two;
-	}
+	pxCurrentTCB = &tcbs[i % TASK_NUM];
 }
 
 __attribute__((naked)) void vPortSVCHandler(void)
@@ -156,54 +157,54 @@ __attribute__((naked)) void xPortPendSVHandler(void)
 {
 	/* This is a naked function. */
 	__asm volatile (
-	"mrs r0, psp                         \n"
-	"isb                                 \n"
-	"                                    \n"
-	"ldr r3, pxCurrentTCBConst           \n" /* Get the location of the current TCB. */
-	"ldr r2, [r3]                        \n"
-	"                                    \n"
-	"tst r14, #0x10                      \n" /* Is the task using the FPU context?  If so, push high vfp registers. */
-	"it eq                               \n"
-	"vstmdbeq r0!, {s16-s31}             \n"
-	"                                    \n"
-	"stmdb r0!, {r4-r11, r14}            \n" /* Save the core registers. */
-	"str r0, [r2]                        \n" /* Save the new top of stack into the first member of the TCB. */
-	"                                    \n"
-	"stmdb sp!, {r0, r3}                 \n"
-	"mov r0, %0                          \n"
-	"cpsid i                             \n" /* ARM Cortex-M7 r0p1 Errata 837070 workaround. */
-	"msr basepri, r0                     \n"
-	"dsb                                 \n"
-	"isb                                 \n"
-	"cpsie i                             \n" /* ARM Cortex-M7 r0p1 Errata 837070 workaround. */
-	"bl vTaskSwitchContext               \n"
-	"mov r0, #0                          \n"
-	"msr basepri, r0                     \n"
-	"ldmia sp!, {r0, r3}                 \n"
-	"                                    \n"
-	"ldr r1, [r3]                        \n" /* The first item in pxCurrentTCB is the task top of stack. */
-	"ldr r0, [r1]                        \n"
-	"                                    \n"
-	"ldmia r0!, {r4-r11, r14}            \n" /* Pop the core registers. */
-	"                                    \n"
-	"tst r14, #0x10                      \n" /* Is the task using the FPU context?  If so, pop the high vfp registers too. */
-	"it eq                               \n"
-	"vldmiaeq r0!, {s16-s31}             \n"
-	"                                    \n"
-	"msr psp, r0                         \n"
-	"isb                                 \n"
-	"                                    \n"
+	"mrs r0, psp			\n"
+	"isb				\n"
+	"				\n"
+	"ldr r3, pxCurrentTCBConst	\n" /* Get the location of the current TCB. */
+	"ldr r2, [r3]			\n"
+	"				\n"
+	"tst r14, #0x10			\n" /* Is the task using the FPU context?  If so, push high vfp registers. */
+	"it eq				\n"
+	"vstmdbeq r0!, {s16-s31}	\n"
+	"				\n"
+	"stmdb r0!, {r4-r11, r14}	\n" /* Save the core registers. */
+	"str r0, [r2]			\n" /* Save the new top of stack into the first member of the TCB. */
+	"				\n"
+	"stmdb sp!, {r0, r3}		\n"
+	"mov r0, %0			\n"
+	"cpsid i			\n" /* ARM Cortex-M7 r0p1 Errata 837070 workaround. */
+	"msr basepri, r0		\n"
+	"dsb				\n"
+	"isb				\n"
+	"cpsie i			\n" /* ARM Cortex-M7 r0p1 Errata 837070 workaround. */
+	"bl vTaskSwitchContext		\n"
+	"mov r0, #0			\n"
+	"msr basepri, r0		\n"
+	"ldmia sp!, {r0, r3}		\n"
+	"				\n"
+	"ldr r1, [r3]			\n" /* The first item in pxCurrentTCB is the task top of stack. */
+	"ldr r0, [r1]			\n"
+	"				\n"
+	"ldmia r0!, {r4-r11, r14}	\n" /* Pop the core registers. */
+	"				\n"
+	"tst r14, #0x10			\n" /* Is the task using the FPU context?  If so, pop the high vfp registers too. */
+	"it eq				\n"
+	"vldmiaeq r0!, {s16-s31}	\n"
+	"				\n"
+	"msr psp, r0			\n"
+	"isb				\n"
+	"				\n"
 	#ifdef WORKAROUND_PMU_CM001 /* XMC4000 specific errata workaround. */
 	#if WORKAROUND_PMU_CM001 == 1
-	"	push { r14 }                \n"
-	"	pop { pc }                  \n"
+	"	push { r14 }		\n"
+	"	pop { pc }		\n"
 	#endif
 	#endif
-	"                                    \n"
-	"bx r14                              \n"
-	"                                    \n"
-	".align 4                            \n"
-	"pxCurrentTCBConst: .word pxCurrentTCB  \n"
+	"				\n"
+	"bx r14				\n"
+	"				\n"
+	".align 4			\n"
+	"pxCurrentTCBConst: .word pxCurrentTCB	\n"
 	::"i" (configMAX_SYSCALL_INTERRUPT_PRIORITY)
 	);
 }
@@ -212,13 +213,13 @@ void xPortSysTickHandler(void)
 {
 	HAL_IncTick();
 
-	__asm volatile ("cpsid i" : : : "memory");
-	__asm volatile ("dsb" : : : "memory");
-	__asm volatile ("isb" : : : "memory");
+	__asm volatile ("cpsid i"	: : : "memory");
+	__asm volatile ("dsb"		: : : "memory");
+	__asm volatile ("isb"		: : : "memory");
 
 	/* A context switch is required. Context switching is performed in
-	* the PendSV interrupt. Pend the PendSV interrupt. */
+	 * the PendSV interrupt. Pend the PendSV interrupt. */
 	portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
 
-	__asm volatile ("cpsie i" : : : "memory");
+	__asm volatile ("cpsie i"	: : : "memory");
 }
